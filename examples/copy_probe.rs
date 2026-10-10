@@ -8,6 +8,8 @@
 //! cargo run --example copy_probe -- "some text"
 //! cargo run --example copy_probe -- --secret "hunter2"     # as a password manager would
 //! cargo run --example copy_probe -- --image shot.png       # offered as image/png
+//! cargo run --example copy_probe -- --clear-first "text"   # empty the clipboard first, as
+//!                                                          # Edge does from an InPrivate window
 //! ```
 
 use std::os::fd::OwnedFd;
@@ -30,7 +32,11 @@ struct Probe {
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    let clear_first = args.first().is_some_and(|arg| arg == "--clear-first");
+    if clear_first {
+        args.remove(0);
+    }
     let (types, bytes): (Vec<&str>, Vec<u8>) = match args.as_slice() {
         [flag, path] if flag == "--image" => (
             vec!["image/png"],
@@ -45,7 +51,7 @@ fn main() {
             text.clone().into_bytes(),
         ),
         _ => {
-            eprintln!("usage: copy_probe [--secret] <text> | --image <file.png>");
+            eprintln!("usage: copy_probe [--clear-first] ([--secret] <text> | --image <file.png>)");
             std::process::exit(2);
         }
     };
@@ -61,6 +67,11 @@ fn main() {
     let source = manager.create_data_source(&qh, ());
     for mime in &types {
         source.offer((*mime).to_owned());
+    }
+    if clear_first {
+        // Both requests in one flush, so the compositor sees them back to back -- the empty
+        // clipboard lasts no longer than it does when Chromium does this.
+        device.set_selection(None);
     }
     device.set_selection(Some(&source));
 

@@ -107,6 +107,9 @@ $ busctl --user call com.wlrix.Clipboard /com/wlrix/Clipboard com.wlrix.Clipboar
 ```
 
 Killing a `copy_probe` is the "program that copied it exited" case: `paste_probe` should still find the entry.
+`copy_probe --clear-first` copies the way Edge does from an InPrivate window — empty the clipboard, then set it — which
+the daemon must not answer by putting the previous entry back over the new one. `watch_probe` logs every clipboard
+change without reading or setting anything, which is how that case was found; it is safe to run against a live session.
 
 ## Build
 

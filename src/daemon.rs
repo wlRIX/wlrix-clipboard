@@ -62,6 +62,15 @@ use crate::store::Store;
 /// arrives late.
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// How long the clipboard has to stay empty before the history refills it.
+///
+/// Not at once, because "empty" is not always "abandoned". Chromium sometimes clears the
+/// clipboard and sets the new selection straight after -- Edge does it on the first copy from an
+/// InPrivate window -- and a refill sent on the empty event lands at the compositor *after* the
+/// new selection, replacing what was just copied with the previous entry. A program that has
+/// exited leaves the clipboard empty for good, so waiting costs that case nothing visible.
+const REFILL_DELAY: Duration = Duration::from_millis(300);
+
 /// The types an offer has announced, collected as they arrive. The compositor sends the offer,
 /// then its types, then the `selection` event naming it, so they are complete by the time
 /// anything reads them.
@@ -106,6 +115,8 @@ pub struct Daemon {
     /// Whether the first `selection` event has arrived. It always does, straight after the
     /// device is created, and says what was on the clipboard before this program started.
     settled: bool,
+    /// A refill waiting out [`REFILL_DELAY`], cancelled by any selection that arrives first.
+    refill: Option<RegistrationToken>,
     exit: Option<Result<(), String>>,
 }
 
@@ -162,6 +173,7 @@ pub fn run() -> Result<(), String> {
         generation: 0,
         serving: None,
         settled: false,
+        refill: None,
         exit: None,
     };
     daemon.publish(false);
@@ -213,6 +225,10 @@ impl Daemon {
     /// The clipboard changed hands.
     fn on_selection(&mut self, offer: Option<ZwlrDataControlOfferV1>) {
         self.cancel_read();
+        // Whatever this is, it settles the question a pending refill was waiting on.
+        if let Some(refill) = self.refill.take() {
+            self.handle.remove(refill);
+        }
         if let Some(previous) = self.selection.take()
             && Some(&previous) != offer.as_ref()
         {
@@ -222,16 +238,10 @@ impl Daemon {
         self.settled = true;
 
         let Some(offer) = offer else {
-            // Empty: whoever owned the clipboard has gone. Put the active entry back, or at
-            // startup the newest one.
+            // Empty: whoever owned the clipboard has gone -- or is about to set a new selection,
+            // which is why the refill waits. See `REFILL_DELAY`.
             if first || self.config.keep_clipboard_full() {
-                let entry = self
-                    .history
-                    .active()
-                    .or_else(|| self.history.entries().first().map(|entry| entry.id));
-                if let Some(id) = entry {
-                    self.serve(id);
-                }
+                self.schedule_refill();
             }
             return;
         };
@@ -259,6 +269,29 @@ impl Daemon {
                     self.publish(true);
                 }
             }
+        }
+    }
+
+    /// Put the active entry back -- or at startup the newest one -- if the clipboard is still
+    /// empty once [`REFILL_DELAY`] has passed.
+    fn schedule_refill(&mut self) {
+        let timer = self.handle.insert_source(
+            Timer::from_duration(REFILL_DELAY),
+            |_, _, daemon: &mut Daemon| {
+                daemon.refill = None;
+                let entry = daemon
+                    .history
+                    .active()
+                    .or_else(|| daemon.history.entries().first().map(|entry| entry.id));
+                if let Some(id) = entry {
+                    daemon.serve(id);
+                }
+                TimeoutAction::Drop
+            },
+        );
+        match timer {
+            Ok(token) => self.refill = Some(token),
+            Err(err) => eprintln!("wlrix-clipboard: could not schedule a refill: {err}"),
         }
     }
 
