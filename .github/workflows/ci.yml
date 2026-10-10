@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # No system dependencies: the daemon has no window, so no xkbcommon, and wayland-client is
+      # the pure-Rust backend.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Format
+        run: cargo fmt --all --check
+      # `--all-targets` covers the two probes in `examples/`, which are how the daemon is tested
+      # against a compositor by hand. Nothing else compiles them, so without this they rot.
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Build
+        run: cargo build --verbose
+      # The tests are the history, the type choice, the store and the config. The selection and
+      # the bus need a compositor and a session and are verified by hand, as the README describes.
+      - name: Test
+        run: cargo test --verbose

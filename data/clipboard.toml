@@ -1,0 +1,28 @@
+# wlrix-clipboard settings. Copy to ~/.config/wlrix/clipboard.toml and edit.
+#
+# Every key is optional; the values below are the defaults. An unknown key makes the whole file
+# be ignored (and says so in the session log), so check a hand edit with
+#
+#     wlrix-clipboard --check-config ~/.config/wlrix/clipboard.toml
+#
+# `kill -HUP $(cat $XDG_RUNTIME_DIR/wlrix-clipboard.pid)` applies a change without a restart,
+# except for `persist`, which is read once at startup.
+
+# How many unstarred entries to keep. Starred entries are kept as well as these, never instead of
+# them, and are only ever deleted by hand.
+max_entries = 50
+
+# Keep the history in ~/.local/share/wlrix/clipboard, so it survives logging out. With this off it
+# lives in $XDG_RUNTIME_DIR and is gone at logout -- stars included.
+#
+# Either way, a copy a password manager marks as secret is never recorded.
+persist = true
+
+# When the program something was copied from exits, the clipboard goes empty -- that is how
+# Wayland's clipboard works. With this on, the daemon puts that entry back, so it can still be
+# pasted.
+keep_clipboard_full = true
+
+# The largest copy recorded, in bytes. Anything bigger is still on the clipboard, just not in the
+# history.
+max_entry_bytes = 16777216

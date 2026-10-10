@@ -1,0 +1,32 @@
+[package]
+name = "wlrix-clipboard"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+description = "wlRIX clipboard history — remembers what was copied and puts it back on request."
+repository = "https://github.com/wlRIX/wlrix-clipboard"
+publish = false
+
+[dependencies]
+# The Wayland client. There is no window, so no smithay-client-toolkit: the only protocol spoken
+# is wlr-data-control, which SCTK does not wrap anyway. The same pair `wlrix-screenshot` uses for
+# its clipboard owner, whose `clipboard.rs` this daemon grew out of.
+wayland-client = "0.31"
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+# The event loop. The Wayland connection, the pipes a selection is read through, the bus
+# requests and the SIGHUP ping are all sources on one loop, so nothing polls and nothing races.
+calloop = "0.13"
+# Puts the Wayland connection's fd on calloop. 0.3 rather than 0.4, which wants calloop 0.14 --
+# the same reasoning as `wlrix-tray`.
+calloop-wayland-source = "0.3"
+# D-Bus: `com.wlrix.Clipboard`, which the popup reads and drives. Blocking API, no tokio, as in
+# the tray, the idle manager and the settings daemon.
+zbus = "5"
+# The config file and the history index. TOML is wlRIX's file format throughout.
+serde = { version = "1", features = ["derive"] }
+toml = "1"
+# Pipes for reading a selection, and the non-blocking flag on the end this process reads. Already
+# in the tree by way of wayland-client.
+rustix = { version = "1", features = ["fs", "pipe"] }
+# `O_NOFOLLOW` on the pidfile and `signal` for the reload handler.
+libc = "0.2"
